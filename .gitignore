@@ -1,0 +1,45 @@
+# Build + generated artefacts (never commit; regenerate with make embed)
+build/
+generated/
+
+# Firmware images
+*.uf2
+*.bin
+*.hex
+*.dfu
+*.elf
+*.uf2.txt
+
+# Object files / host test artefacts
+*.o
+*.a
+*.gcda
+*.gcno
+*.gcov
+coverage.xml
+coverage/
+
+# PlatformIO
+.pio/
+.pioenvs/
+piolibdeps/
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# CMake leftovers outside build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake

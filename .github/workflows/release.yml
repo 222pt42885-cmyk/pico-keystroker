@@ -1,0 +1,226 @@
+name: release
+
+# Floating `latest` release: every push to main rebuilds all firmware and
+# moves the `latest` tag + GitHub Release to the new binaries.
+# Download URLs (`.../releases/download/latest/...`) are therefore stable.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-latest
+  cancel-in-progress: true
+
+env:
+  PICO_SDK_VERSION: "2.1.1"
+
+jobs:
+  # --- Raspberry Pi targets: arm-none-eabi + Pico SDK + picotool -> .uf2 ---
+  build-rp2040:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
+      - name: Checkout Pico SDK
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+          submodules: recursive
+      - name: Build picotool
+        run: |
+          git clone --depth 1 https://github.com/raspberrypi/picotool.git
+          cmake -S picotool -B build-picotool -G Ninja
+          cmake --build build-picotool
+          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
+      - name: Configure + build (PICO_BOARD=pico)
+        run: |
+          cmake -S . -B build-rp2040 -G Ninja \
+            -DPICO_BOARD=pico \
+            -DPICO_SDK_PATH="$PWD/pico-sdk"
+          cmake --build build-rp2040
+      - name: Collect UF2
+        run: |
+          mkdir -p dist
+          cp build-rp2040/*.uf2 dist/keystroker-rp2040.uf2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-rp2040
+          path: dist/
+
+  build-rp2040-zero:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
+      - name: Checkout Pico SDK
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+          submodules: recursive
+      - name: Build picotool
+        run: |
+          git clone --depth 1 https://github.com/raspberrypi/picotool.git
+          cmake -S picotool -B build-picotool -G Ninja
+          cmake --build build-picotool
+          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
+      # Same silicon as Pico; the Zero's pin map comes from
+      # targets/rp2040-zero via the root CMakeLists target selection.
+      - name: Configure + build (PICO_BOARD=pico, zero target)
+        run: |
+          cmake -S . -B build-zero -G Ninja \
+            -DPICO_BOARD=pico \
+            -DPICO_SDK_PATH="$PWD/pico-sdk"
+          cmake --build build-zero
+      - name: Collect UF2
+        run: |
+          mkdir -p dist
+          cp build-zero/*.uf2 dist/keystroker-rp2040-zero.uf2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-rp2040-zero
+          path: dist/
+
+  build-rp2350:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
+      - name: Checkout Pico SDK
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+          submodules: recursive
+      - name: Build picotool
+        run: |
+          git clone --depth 1 https://github.com/raspberrypi/picotool.git
+          cmake -S picotool -B build-picotool -G Ninja
+          cmake --build build-picotool
+          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
+      - name: Configure + build (PICO_BOARD=pico2)
+        run: |
+          cmake -S . -B build-rp2350 -G Ninja \
+            -DPICO_BOARD=pico2 \
+            -DPICO_SDK_PATH="$PWD/pico-sdk"
+          cmake --build build-rp2350
+      - name: Collect UF2
+        run: |
+          mkdir -p dist
+          cp build-rp2350/*.uf2 dist/keystroker-rp2350.uf2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-rp2350
+          path: dist/
+
+  # --- STM32 targets (optional): PlatformIO -> .bin/.hex ---
+  build-stm32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Link shared core + build both boards
+        run: |
+          for t in stm32f401-mini blackpill; do
+            ln -s ../../src/common targets/$t/common
+            (cd targets/$t && pio run)
+          done
+      - name: Collect images
+        run: |
+          mkdir -p dist
+          cp targets/stm32f401-mini/.pio/build/stm32f401_mini/firmware.bin \
+            dist/keystroker-stm32f401-mini.bin
+          cp targets/stm32f401-mini/.pio/build/stm32f401_mini/firmware.hex \
+            dist/keystroker-stm32f401-mini.hex || true
+          cp targets/blackpill/.pio/build/blackpill_f401/firmware.bin \
+            dist/keystroker-blackpill-f401cc.bin
+          cp targets/blackpill/.pio/build/blackpill_f401/firmware.hex \
+            dist/keystroker-blackpill-f401cc.hex || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-stm32
+          path: dist/
+
+  # --- ESP32-S3 target: PlatformIO/Arduino USB-OTG HID -> firmware.bin ---
+  build-esp32s3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('targets/esp32s3/platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Link shared core + build
+        run: |
+          ln -s ../../src/common targets/esp32s3/common
+          pio run -d targets/esp32s3 -e esp32s3-zero
+      - name: Collect images
+        run: |
+          mkdir -p dist
+          cp targets/esp32s3/.pio/build/esp32s3-zero/firmware.bin \
+            dist/keystroker-esp32s3-zero.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fw-esp32s3
+          path: dist/
+
+  # --- Move floating `latest` tag + update the `latest` Release ---
+  publish-latest:
+    runs-on: ubuntu-latest
+    needs: [build-rp2040, build-rp2040-zero, build-rp2350, build-stm32, build-esp32s3]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fw-*
+          merge-multiple: true
+          path: dist
+      - name: Move floating `latest` tag
+        run: |
+          git tag -f latest
+          git push -f origin latest
+      - name: Update `latest` GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: latest
+          prerelease: false
+          allowUpdates: true
+          removeArtifacts: true
+          files: |
+            dist/*.uf2
+            dist/*.bin
+            dist/*.hex
+            dist/*.dfu
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
