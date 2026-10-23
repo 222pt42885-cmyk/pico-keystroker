@@ -59,7 +59,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/pico_sdk_import.cmake")
 
 project(pico-keystroker C CXX ASM)
 
-set(CMAKE_C_STANDARD 99)
+# SDK 2.1.1 requires C11 (its public headers use bare static_assert, a parse
+# error under -std=c99/gnu99). src/common stays C99-clean, so the host unit
+# tests' stricter flags are unaffected.
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 pico_sdk_init()

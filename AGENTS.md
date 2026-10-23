@@ -53,7 +53,16 @@ make validate             # tools/validate_targets.py contract checks over every
                           # core refs) + tests/test_s3_contract.c
 make coverage             # same + >=90% line gate on src/common
 make embed                # regenerate generated/payload.h from config/
-cmake -S . -B build/pico -DPICO_BOARD=pico -DPICO_PLATFORM=rp2040 && cmake --build build/pico
+make build                # Docker pre-push gate: ALL firmware targets (fails fast)
+make build-rp2040         # ubuntu:24.04 + pico-sdk 2.1.1, -DPICO_BOARD=pico -> *.uf2
+make build-rp2040-zero    # same image/SDK, -DKEYSTROKER_TARGET=rp2040-zero
+                          # (NEVER hand-pass PICO_BOARD here)
+make build-rp2350         # same image/SDK, -DKEYSTROKER_TARGET=rp2350 -DPICO_BOARD=pico2
+make build-stm32-mini     # python:3.12 + platformio, -e stm32f401_mini -> .bin/.hex
+make build-blackpill      # python:3.12 + platformio, -e blackpill_f401
+make build-esp32s3        # python:3.12 + platformio, -e esp32s3-zero -> firmware.bin
+# (esp32c3 excluded: console stub, no USB-OTG HID possible, no CI build)
+cmake -S . -B build/pico -DPICO_BOARD=pico -DPICO_SDK_PATH=... && cmake --build build/pico
 # Pi Zero: -DKEYSTROKER_TARGET=rp2040-zero — NEVER hand-pass LED/button -Ds
 # (the target sets PID/product string/LED_PIN=-1/WS2812_PIN=16 itself).
 # Pico 2: -DKEYSTROKER_TARGET=rp2350

@@ -46,10 +46,25 @@ typedef enum {
 #define HID_MOD_RALT   0x40u /* AltGr on de/tr layouts */
 #define HID_MOD_RGUI   0x80u
 
+/* HID boot-protocol usage IDs (USB HID Usage Tables, Keyboard/Keypad
+ * page 0x07). Each guarded: firmware TUs for the ESP32-S3 target also pull
+ * in TinyUSB's class/hid/hid.h (via USBHIDKeyboard.h -> USBHID.h), which
+ * defines the same HID_KEY_* macros with identical values — the guards
+ * keep this shared header warning-free when both are included. Values
+ * verified equal against TinyUSB hid.h: NONE=0x00 ENTER=0x28 TAB=0x2B
+ * SPACE=0x2C, so skipping our definitions on collision is safe. */
+#ifndef HID_KEY_NONE
 #define HID_KEY_NONE  0x00u
+#endif
+#ifndef HID_KEY_ENTER
 #define HID_KEY_ENTER 0x28u
+#endif
+#ifndef HID_KEY_TAB
 #define HID_KEY_TAB   0x2Bu
+#endif
+#ifndef HID_KEY_SPACE
 #define HID_KEY_SPACE 0x2Cu
+#endif
 
 /*
  * Parse a language tag (case-insensitive). Accepts "en_US", "en-US" and

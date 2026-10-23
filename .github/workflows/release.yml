@@ -18,11 +18,13 @@ jobs:
   # --- Raspberry Pi targets: arm-none-eabi + Pico SDK + picotool -> .uf2 ---
   build-rp2040:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
           sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
             libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
       - name: Checkout Pico SDK
@@ -35,14 +37,25 @@ jobs:
       - name: Build picotool
         run: |
           git clone --depth 1 https://github.com/raspberrypi/picotool.git
-          cmake -S picotool -B build-picotool -G Ninja
+          # picotool's own CMakeLists requires PICO_SDK_PATH (it builds
+          # against pico-sdk headers); reuse the SDK checkout above.
+          cmake -S picotool -B build-picotool -G Ninja \
+            -DPICO_SDK_PATH="$PWD/pico-sdk"
           cmake --build build-picotool
-          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
+          # Install: the SDK's find_package(picotool CONFIG) must resolve an
+          # installed picotoolConfig — the raw build tree's config points at
+          # a non-existent picotoolTargets.cmake and fails firmware config.
+          cmake --install build-picotool --prefix "$PWD/picotool-install"
+          echo "$PWD/picotool-install/bin" >> "$GITHUB_PATH"
       - name: Configure + build (PICO_BOARD=pico)
         run: |
+          # SDK 2.1.1 headers use static_assert (C11+); the root CMakeLists
+          # defaults to C99, so override the standard for firmware builds.
           cmake -S . -B build-rp2040 -G Ninja \
             -DPICO_BOARD=pico \
-            -DPICO_SDK_PATH="$PWD/pico-sdk"
+            -DPICO_SDK_PATH="$PWD/pico-sdk" \
+            -Dpicotool_DIR="$PWD/picotool-install/lib/cmake/picotool" \
+            -DCMAKE_C_STANDARD=11
           cmake --build build-rp2040
       - name: Collect UF2
         run: |
@@ -55,11 +68,13 @@ jobs:
 
   build-rp2040-zero:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
           sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
             libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
       - name: Checkout Pico SDK
@@ -72,16 +87,29 @@ jobs:
       - name: Build picotool
         run: |
           git clone --depth 1 https://github.com/raspberrypi/picotool.git
-          cmake -S picotool -B build-picotool -G Ninja
-          cmake --build build-picotool
-          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
-      # Same silicon as Pico; the Zero's pin map comes from
-      # targets/rp2040-zero via the root CMakeLists target selection.
-      - name: Configure + build (PICO_BOARD=pico, zero target)
-        run: |
-          cmake -S . -B build-zero -G Ninja \
-            -DPICO_BOARD=pico \
+          # picotool's own CMakeLists requires PICO_SDK_PATH (it builds
+          # against pico-sdk headers); reuse the SDK checkout above.
+          cmake -S picotool -B build-picotool -G Ninja \
             -DPICO_SDK_PATH="$PWD/pico-sdk"
+          cmake --build build-picotool
+          # Install: the SDK's find_package(picotool CONFIG) must resolve an
+          # installed picotoolConfig — the raw build tree's config points at
+          # a non-existent picotoolTargets.cmake and fails firmware config.
+          cmake --install build-picotool --prefix "$PWD/picotool-install"
+          echo "$PWD/picotool-install/bin" >> "$GITHUB_PATH"
+      # Same silicon as Pico; the Zero's pin map, USB PID/product string and
+      # button/WS2812 pins come from -DKEYSTROKER_TARGET=rp2040-zero via the
+      # root CMakeLists target selection (never hand-pass -DPICO_BOARD here:
+      # an explicit PICO_BOARD would override the target mapping).
+      - name: Configure + build (KEYSTROKER_TARGET=rp2040-zero)
+        run: |
+          # SDK 2.1.1 headers use static_assert (C11+); the root CMakeLists
+          # defaults to C99, so override the standard for firmware builds.
+          cmake -S . -B build-zero -G Ninja \
+            -DKEYSTROKER_TARGET=rp2040-zero \
+            -DPICO_SDK_PATH="$PWD/pico-sdk" \
+            -Dpicotool_DIR="$PWD/picotool-install/lib/cmake/picotool" \
+            -DCMAKE_C_STANDARD=11
           cmake --build build-zero
       - name: Collect UF2
         run: |
@@ -94,11 +122,13 @@ jobs:
 
   build-rp2350:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30
           sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi \
             libnewlib-arm-none-eabi build-essential libusb-1.0-0-dev git python3
       - name: Checkout Pico SDK
@@ -111,14 +141,26 @@ jobs:
       - name: Build picotool
         run: |
           git clone --depth 1 https://github.com/raspberrypi/picotool.git
-          cmake -S picotool -B build-picotool -G Ninja
-          cmake --build build-picotool
-          echo "$PWD/build-picotool" >> "$GITHUB_PATH"
-      - name: Configure + build (PICO_BOARD=pico2)
-        run: |
-          cmake -S . -B build-rp2350 -G Ninja \
-            -DPICO_BOARD=pico2 \
+          # picotool's own CMakeLists requires PICO_SDK_PATH (it builds
+          # against pico-sdk headers); reuse the SDK checkout above.
+          cmake -S picotool -B build-picotool -G Ninja \
             -DPICO_SDK_PATH="$PWD/pico-sdk"
+          cmake --build build-picotool
+          # Install: the SDK's find_package(picotool CONFIG) must resolve an
+          # installed picotoolConfig — the raw build tree's config points at
+          # a non-existent picotoolTargets.cmake and fails firmware config.
+          cmake --install build-picotool --prefix "$PWD/picotool-install"
+          echo "$PWD/picotool-install/bin" >> "$GITHUB_PATH"
+      - name: Configure + build (KEYSTROKER_TARGET=rp2350)
+        run: |
+          # SDK 2.1.1 headers use static_assert (C11+); the root CMakeLists
+          # defaults to C99, so override the standard for firmware builds.
+          cmake -S . -B build-rp2350 -G Ninja \
+            -DKEYSTROKER_TARGET=rp2350 \
+            -DPICO_BOARD=pico2 \
+            -DPICO_SDK_PATH="$PWD/pico-sdk" \
+            -Dpicotool_DIR="$PWD/picotool-install/lib/cmake/picotool" \
+            -DCMAKE_C_STANDARD=11
           cmake --build build-rp2350
       - name: Collect UF2
         run: |

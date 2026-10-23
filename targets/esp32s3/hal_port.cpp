@@ -8,8 +8,12 @@
  *     keyboard report ID.
  *   - USB device strings via USB.manufacturerName()/productName()
  *     (called in main.cpp setup(), before USB.begin()).
- *   - Mount/ready via the USB-device API: USB.mounted() (TinyUSB
- *     tud_mounted state) and USBHID::ready() (tud_hid_ready state).
+ *   - Mount/ready via the TinyUSB device API: tud_mounted() and
+ *     tud_hid_n_ready(0) — the same calls Arduino's own USBHID::ready()
+ *     is built on (libraries/USB/src/USBHID.cpp). ESPUSB exposes no
+ *     mounted() and USBHIDKeyboard exposes no ready() in any
+ *     Arduino-ESP32 core generation (2.x or 3.x), so TinyUSB is called
+ *     directly; its device API is stable across both.
  *
  * Requires ARDUINO_USB_MODE=0 (USB-OTG/TinyUSB device mode, forced in
  * platformio.ini). In HW-CDC mode (==1) TinyUSB device is absent and
@@ -23,6 +27,7 @@
 
 #include "USB.h"
 #include "USBHIDKeyboard.h"
+#include "esp32-hal-tinyusb.h" /* tud_mounted() / tud_hid_n_ready() */
 
 #include "board_config.h"
 #include "hal.h"
@@ -47,12 +52,16 @@ void hal_init(void) {
   Serial.begin(115200);
 }
 
+/* TinyUSB device state, called directly: ESPUSB has no mounted() and
+ * USBHIDKeyboard (which owns its USBHID privately) has no ready() in the
+ * Arduino-ESP32 core, so these mirror USBHID::ready()'s implementation
+ * (`return tud_hid_n_ready(0);`). False when unmounted/not-ready. */
 bool hal_is_mounted(void) {
-  return USB.mounted();
+  return tud_mounted();
 }
 
 bool hal_hid_ready(void) {
-  return USB.mounted() && Keyboard.ready();
+  return tud_mounted() && tud_hid_n_ready(0);
 }
 
 bool hal_hid_send(uint8_t modifier, const uint8_t keycode[6]) {

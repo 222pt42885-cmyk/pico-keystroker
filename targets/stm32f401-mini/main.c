@@ -2,9 +2,11 @@
  * main.c — STM32 Mini F401 keystroker firmware (STM32F401CCU6).
  *
  * Baremetal super-loop modeled on targets/rp2040/main.c, reusing
- * src/common fully. Only HAL calls plus the shared core live here;
- * USB pumping happens in the OTG_FS interrupt (see hal_port.c), so
- * this file never touches TinyUSB/tusb.h or the Pico SDK directly.
+ * src/common fully. Only HAL calls plus the shared core live here.
+ * USB servicing is split: the OTG_FS interrupt is owned by the Adafruit
+ * TinyUSB core (user code must not redefine OTG_FS_IRQHandler — see
+ * hal_port.c), while this loop pumps the stack's deferred work via
+ * tud_task() (usb_pump() below).
  *
  * Flow: hal_init() -> load embedded config (defaults + parse + validate,
  * fall back to defaults on any failure) -> init button_t with
@@ -89,6 +91,22 @@ static uint32_t now_ms(void) {
 }
 #endif
 
+#if defined(STM32F401xx) || defined(STM32F4xx) || defined(USE_HAL_DRIVER)
+/* Real target: TinyUSB device stack (Adafruit TinyUSB lib). The OTG_FS
+ * interrupt is owned by the core; deferred stack work must be polled
+ * from the loop via tud_task() (TinyUSB event model: the ISR only
+ * queues events, tud_task() processes them — without it the device
+ * never enumerates). */
+#include "tusb.h"
+static void usb_pump(void) {
+    tud_task();
+}
+#else
+/* Host/doc fallback: no USB stack; keep the logic compiling. */
+static void usb_pump(void) {
+}
+#endif
+
 /* typing_engine callback: push one press/release action to the host. */
 static void emit_action(const hid_action_t *action, void *user) {
     const typing_engine_t *eng = (const typing_engine_t *)user;
@@ -104,6 +122,7 @@ static void emit_action(const hid_action_t *action, void *user) {
     /* Wait (bounded) for the host to accept the report. */
     t0 = now_ms();
     while (!hal_hid_ready()) {
+        usb_pump(); /* Let the stack progress; ready flags update here. */
         if ((uint32_t)(now_ms() - t0) > 2000u) {
             return; /* Host went away; drop the keystroke. */
         }
@@ -156,7 +175,9 @@ int main(void) {
     button_init(&g_button, g_cfg.debounce_ms, g_cfg.double_click_ms);
 
     for (;;) {
-        /* USB device work runs in the OTG_FS interrupt (hal_port.c). */
+        /* The core's OTG_FS ISR queues USB events; usb_pump() (tud_task())
+         * processes them — both are required for enumeration + HID. */
+        usb_pump();
         mounted = hal_is_mounted();
         now = now_ms();
         if (mounted && !was_mounted) {

@@ -48,6 +48,34 @@ General flow for every target:
   drivers on most systems (USB-Serial/JTAG or CDC); on Windows install
   the USB serial driver for your board if no COM port appears.
 
+## Local Docker verification (mirrors CI)
+
+Requires only [Docker](https://www.docker.com/) on the host — no
+toolchains installed locally. Each target builds the working tree in a
+throwaway container with the same steps as
+`.github/workflows/release.yml` (same images, same pico-sdk tag, same
+CMake flags, same PlatformIO envs):
+
+```sh
+make build            # all firmware targets below, stops on first failure
+make build-rp2040     # Pi Pico: PICO_BOARD=pico -> *.uf2
+make build-rp2040-zero
+make build-rp2350     # Pico 2: KEYSTROKER_TARGET=rp2350 + PICO_BOARD=pico2
+make build-stm32-mini # env stm32f401_mini -> firmware.bin (+ .hex)
+make build-blackpill  # env blackpill_f401 -> firmware.bin (+ .hex)
+make build-esp32s3    # env esp32s3-zero -> firmware.bin
+```
+
+First run is slow (each container downloads its toolchain, pico-sdk
+2.1.1, or the PlatformIO platforms/Arduino core — ten minutes or more
+per target); later runs reuse Docker's image layer cache. Per-target
+logs live under `build/verify-*` (removed on success, kept on failure
+with the log tail printed). The PlatformIO `common` symlink and `.pio/`
+dirs are created inside the build and removed afterwards, so the repo
+stays clean. `targets/esp32c3` is excluded: it is a console stub with no
+USB-OTG peripheral, so it can never enumerate as a keyboard and has no
+CI firmware build either.
+
 ## Raspberry Pi Pico / RP2040-Zero (RP2040)
 
 Build at the repo root (`src/common` is compiled in; no symlink needed):

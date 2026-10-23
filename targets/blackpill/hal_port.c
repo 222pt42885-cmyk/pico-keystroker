@@ -2,8 +2,10 @@
  * per-board differences live in board_config.h).
  *
  * USB stack: TinyUSB device, synopsys STM32 FS driver (OTG_FS in FS mode
- * on PA11/PA12). TinyUSB runs from the OTG_FS interrupt, so main.c needs
- * no USB pump. You must add TinyUSB's HID descriptors (copy the TinyUSB
+ * on PA11/PA12). The OTG_FS interrupt is owned by the Adafruit TinyUSB
+ * core (do NOT define OTG_FS_IRQHandler here — a duplicate definition
+ * fails the link); deferred stack work is pumped via tud_task() from
+ * main.c's loop. You must add TinyUSB's HID descriptors (copy the TinyUSB
  * hid_app `usb_descriptors.c` example and adjust VID/PID/strings).
  * Alternative (same hal_* surface): STM32Cube USB Device Library
  * (USBD_HID): swap tud_* calls for USBD_HID_SendReport + checks on
@@ -47,11 +49,12 @@ void hal_init(void)
     tud_init(0); /* TinyUSB device stack (descriptors in usb_descriptors.c). */
 }
 
-/* TinyUSB device interrupt pump (FS core on F401). */
-void OTG_FS_IRQHandler(void)
-{
-    tud_int_handler(0);
-}
+/* NOTE: no OTG_FS_IRQHandler here. With framework=arduino + the Adafruit
+ * TinyUSB library, the core's own Adafruit_TinyUSB_stm32.cpp already
+ * defines OTG_FS_IRQHandler (it forwards to the TinyUSB ISR pump), so
+ * defining it again here fails the link with "multiple definition of
+ * OTG_FS_IRQHandler". Rely on the core's handler; TinyUSB deferred work
+ * is serviced by the tud_task() poll in main.c's loop. */
 
 bool hal_is_mounted(void)
 {
